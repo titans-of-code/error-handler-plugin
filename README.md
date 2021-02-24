@@ -1,247 +1,130 @@
-# API Error Handler
+# Error Plugin for Mule 4.2.x
 
-This error handler module processes any errors thrown in a flow and transforms to the correct JSON response body and HTTP status code for an API.
+## Branches
 
-All APIKit and HTTP exceptions are handled by the module and can be customized in the *Common Errors* tab.  Additional error definitions can be added via a dataweave file defined in the *Custom Errors* section.
+- 4.2.x -- https://github.com/mulesoft-catalyst/error-handler-plugin/tree/4.0.0
+- 4.3.x -- https://github.com/mulesoft-catalyst/error-handler-plugin/tree/5.0.0
 
-The error is converted by this module into the items below.
+**This is only for minimum Mule version 4.2.x onwards**
 
-- **JSON response body**
-  - **Error message**:  *Reason phrase* from the [HTTP RFC 7231 Response Status Codes][http-rfc-7231-6] for [Client Error 4xx][http-rfc-7231-6.5] and [Server Error 5xx][http-rfc-7231-6.6].
-  - **Error details**: This can be any text description but is usually the Mule `error.description` or developer-defined DataWeave or text.
-- **HTTP status code**: *Status code* from the [HTTP RFC 7231 Response Status Codes][http-rfc-7231-6] for [Client Error 4xx][http-rfc-7231-6.5] and [Server Error 5xx][http-rfc-7231-6.6].
+## General
 
-A JSON body response example is shown below.
-
-**StatusCode: 400**
-```
-{
-  "error": {
-      "message": "Bad Request",
-      "details": "Error validating response"
-  }
-}
-```
-
-The error object is defined on the *Advanced* tab.  It takes the standard [Mule Error][mule-error] by default, which is the recommended setting.  You can change this as long as the provided object has the same fields as the [Mule Error][mule-error].
-
-This is compatible with Mule 4.x.x runtimes.
-
-This module is derived from the [Error Plugin for Mule][handler-plugin].  They offer a similar feature-set.  However, this version focuses on flexibility for custom scripting on each error type and removing custom error definitions from the UI.
-
-## Features
-- Converts all errors into proper API JSON request body and HTTP status code.
-- Customize error descriptions for common API errors for HTTP & APIKIT.
-- Customize error description for the default error when no errors matched: 500 - Internal Server Error.
-- Provide custom error mappings with a dataweave file.
+This custom error handler plugin allows a single module to process error messages from multiple types:
+- Error types default to mule. (HTTP, APIKIT, Connectors based, etc)
+- custom error types as defined by raise error component. 
 - Un-clutter exceptions both in UI and XML
-- Compatible with `on-error-propagate` and  `on-error-continue` error handlers.
+- User can change the custom error message (for multiple errors) in the UI rather than in the XML.
+- Users intending to use other error types should put them on on-error-propagate or on-error-continue prior to using this module.
 - No specific error type is required for this module. It can parse any error types.
+- Propagate errors from sys/prc layer back to exp layer, cementing error propagation across layers.
+- To propagate the errors, ensure the appropriate variable name is referenced in the previous error section.
 
-# Installation
+## Operations Supported
+On Error
 
-This is a custom Mule module that is installed like any other connector, it is installed by adding the dependency to the pom or from "Search Exchange" button in Studio. Once installed, it will show up in the Anypoint Studio palette.
+## Deploying to Exchange
+To deploy to Exchange, run the script named deploy.sh as follows,
 
-# Usage
+`./deploy.sh <YOUR_ORG_ID>`
 
-## Maven Dependency
+Please ensure that your settings.xml has been configured with the correct Exchange credentials so that the publish can succeed.
 
-Use the dependency below to include the API Error Handler in an application's maven build.  
-The groupId value must be the appropriate Anypoint Org Id where the module is deployed.
+## Local Install
+For local install, give any groupId. Issue `mvn clean install`
+
+## Using the module in a Mule4 Project
+Add this dependency to your application pom.xml
 
 ```
 <dependency>
-    <groupId>${anypoint-org-id}</groupId>
-    <artifactId>api-error-handler-module</artifactId>
-    <version>${api-error-handler-module.version}</version>
+	<groupId>${groupId}</groupId>
+	<artifactId>common-error-handler</artifactId>
+	<version>${version}</version>
+	<classifier>mule-plugin</classifier>
 </dependency>
 ```
 
-## App Preparation
+## Usage
 
-- Delete the auto-generated error blocks (`on-error-propagate`/`on-error-continue`) before using this module.
-- Place the module inside an error block: `on-error-propagate`.  You usually would not use `on-error-continue` since the error handler module generates the API's error response to the caller.
-- Set the outbound HTTP Status variable, `vars.httpStatus` when using APIKit, from the HTTP status attribute set by the module: `attributes.httpStatus`.  This is how the status code is sent to the caller.
-- Update HTTP Listener's response values to properly use the generated body and HTTP status from the module.  See below.
+- Delete the auto-generated error blocks (on-error-propagate/on-error-continue) before using this module.
+- Place the plugin inside an error block (on-error-propagate/on-error-continue) along with a variable for httpStatus.
 
-**Update HTTP Listener Response**
-
-Add `vars.httpStatus` to the listener's `http:response` and `http:error-response` elements. Also make sure that both `http:response` and `http:error-response` elements have the `payload` as their body.
-
+## HTTP Listener Configuration
+The error response should be changed to the following to send back the populated error message.
 ```
-	<http:response 
-		statusCode="#[vars.httpStatus default 200]">
+<http:listener doc:name="Listener" doc:id="1d3566ad-c8dc-4b8a-ab45-338625c74afb" config-ref="HTTP_Listener_config" path="/error">
+	<http:response statusCode="#[vars.httpStatus default 200]">
+		<http:headers>#[vars.outboundHeaders default {}]</http:headers>
 	</http:response>
-```
-
-```
-	<http:error-response 
-		statusCode="#[vars.httpStatus default 500]">
-		<http:body ><![CDATA[#[payload]]]></http:body>
+	<http:error-response statusCode="#[vars.httpStatus default 500]">
+		<http:body>#[payload]</http:body>
+		<http:headers>#[vars.outboundHeaders default {}]</http:headers>
 	</http:error-response>
+</http:listener>
 ```
 
-## Error Handler Flow
+## Tabs
 
-Drag from palette into error handler to transform error into API response.
-**Process Error** is the supported operation.  This transforms the error to the proper JSON response body and HTTP status code.
+### General
 
-**Module XML**
+- Takes values for apiName and apiVersion. Current default values will be read from a property file `api.name` and `api.version` respectively.
+- Takes value for the previous error message that needs to be propagated. It has to be of type `array`.
+![alt text](previousError.png)
+- Error section defines from what mule expression should the error be read.
+- httpStatus set variable is required to send back the httpStatus on the http response
 
+**httpStatus variable must be set for the http listener to return on the request**
+
+![alt text](general.png)
+
+### Common Errors
+Common HTTP based errors are defined in this section. Users have to provide the message they want to send back on the API error response.
+
+![alt text](commonErrors.png)
+
+### Custom Errors (`,` Delimited)
+
+Currently due to a limitation on XML SDK, text based entries are required for custom errors. The number of entries have to match else it will fail to be successfully executed.
+
+errorTypes: Have to provided as `,` separated values. Example : DB:BAD_SQL_SYNTAX, ABC:DEF
+errorCodes: Have to provided as `,` separated values. Example : 500, 599
+errorMessages: Have to provided as `,` separated values. Example : SQL Syntax is incorrect, Testing
+
+![alt text](customErrors.png)
+
+### CorrelationId
+
+A correlationId will be used for tracking transactions. The default value is #[correlationId]
+
+## Sample Usage
+
+### On Error With Default Errors
 ```
-<api-error-handler-module:process-error doc:name="Process Error"
-	customErrorDefinition="errors/customErrors.dwl" />
-```
-
-**Error Handler Flow**
-
-```
-<error-handler name="error-handler-api">
-	<on-error-propagate
-		enableNotifications="true"
-		logException="true"
-		doc:name="On Error Propagate">
-		<api-error-handler-module:on-error
-			doc:name="Process Error"
-			customErrorDefinition="errors/customErrors.dwl" />
-		<json-logger:logger
-			doc:name="Log Error"
-			priority="ERROR"
-			tracePoint="ERROR"
-			message='#[write(payload ++ { httpStatus: attributes.httpStatus }, "application/json")]'
-			config-ref="json-logger-config">
-			<json-logger:content ><![CDATA[#[output application/json --- error]]]></json-logger:content>
-		</json-logger:logger>
-		<set-variable
-			value="#[attributes.httpStatus]"
-			doc:name="Set HTTP Status Code"
+<error-handler>
+	<on-error-propagate enableNotifications="true"
+		logException="true" doc:name="On Error Propagate" doc:id="b995ec19-3b56-4b8e-8b0f-b172cead9be4">
+		<error-handler-plugin:on-error doc:name="On error" doc:id="42db8478-b083-48b4-b31f-6638e6a6f18a" />
+		<set-variable value="#[attributes.httpStatus]"
+			doc:name="Set Variable" doc:id="2151ced0-a42f-4c0d-b439-455abd354277"
 			variableName="httpStatus" />
 	</on-error-propagate>
 </error-handler>
 ```
 
-# Configuration
-
-## Common Errors Tab
-**APIKit & HTTP Error Details Customization**
-
-Modify the error details for the APIKit and HTTP errors on the *Common Errors* tab.  This field supports dataweave for dynamically generated details.
-The response status code and error message (phrase) *cannot* be changed for common errors on this tab.
-Additional errors not covered here can be mapped to the same status codes on the *Custom Errors* tab.
-
-## Custom Errors Tab
-**File for Custom Error Definitions**
-
-You can add any number of custom error definitions for the module to include in the mapping.  This is done by defining these custom error mappings in a [DataWeave file][dataweave-file].
-
-This file should be in or below `src/main/resources` folder in the Mule app.  Recommended practice is to put it in an *errors* folder: `src/main/resources/errors`.
-
-When adding the file name to the *Custom Error Definitions File* field in the module, make sure to include the full relative path from the resources folder.
-Example: if the custom errors file is `src/main/resources/errors/customErrors.dwl` then this field should be `errors/customErrors.dwl`.
-
-**All custom errors must be in a single file; multiple files are not supported**
-
-The custom errors must be an *object of objects* with the fields below.
-
-- Key: [Mule error type][mule-error-types] used to match.  Example: `HTTP:BAD_REQUEST`
-- Value: (object)
-	- `errorCode`: HTTP status code to send in response.
-	- `errorMessage`: Error reason phrase to send in JSON body response.
-	- `errorDescription`: Error details to send in JSON body response.
-
-DataWeave script is allowed in each field value.  Unlike the DataWeave in the module's fields, the DataWeave script in the custom errors file is executed *inside the context* of the error handler module.  This means it can **only** access content provided via the module's fields, which are accessed via the `vars` object.  To access the error object from this file, you would need to use `vars.error` instead of simply `error`. 
-
-**Custom errors override common errors.**  If you want to override a common error's status or message, and not just the details, you would add an entry for that error in the custom errors file, which will completely override the common error.
-
-A template custom error file is shown below.  Two custom errors, `APP:...`, and one common error override, `HTTP:...`, are shown.
-
+### On Error With Custom Errors
 ```
-%dw 2.0
-output application/java
-
-// Map error parameter in module to local variable to match normal error selector syntax like 'error.description'.
-var error = vars.error
-// Nested error pulled off the Mule error object, which conforms to the API Error Handler responses.
-var previousError = error.exception.errorMessage.typedValue.error.details
----
-{
-	/*
-	APP 401 Unauthorized
-	This catches custom service unauthorized error from app and formats the response accordingly.
-	*/
-	"APP:UNAUTHORIZED": {
-		"errorCode":401,
-		"errorMessage": "Unauthorized",
-		"errorDescription": error.description default "There was an issue with authorization."
-	},
-	
-	/*
-	APP 503 Service Unavailable
-	This catches custom service unavailable error from app and formats the response accordingly.
-	*/
-	"APP:SERVICE_UNAVAILABLE": {
-		"errorCode":503,
-		"errorMessage": "Service Unavailable",
-		"errorDescription": error.description default "There was an issue connecting to the system."
-	},
-
-	/*
-	HTTP 500 Pass Through
-	This catches HTTP 500 errors and propagates the detailed reason for failure.
-	It uses the error.details field from the response of the HTTP call that failed, which conforms to the API Error Handler responses.
-	If not found, the error.description will be returned, which generally says an internal server error occurred.
-	This useful for process or experience APIs to pass through system API errors.
-	*/
-	"HTTP:INTERNAL_SERVER_ERROR": {
-		"errorCode":500,
-		"errorMessage": "Internal Server Error",
-		"errorDescription": (if (!isEmpty(previousError)) previousError else error.description) default "Internal Server Error."
-	}
-}
+<on-error-propagate enableNotifications="true" logException="true" doc:name="On Error Propagate" doc:id="b995ec19-3b56-4b8e-8b0f-b172cead9be4">
+	<error-handler-plugin:on-error doc:name="On error" 
+		doc:id="2108e03c-1a96-4dcd-976e-26d9f5f5f158" 
+			errorTypes="DB:BAD_SQL_SYNTAX, ABC:DEF" 
+			errorCodes="500, 599" 
+			errorMessages="SQL Syntax is incorrect, Testing"/>
+	<set-variable value="#[attributes.httpStatus]"
+		doc:name="Set Variable" doc:id="2151ced0-a42f-4c0d-b439-455abd354277"
+		variableName="httpStatus" />
+</on-error-propagate>
 ```
 
-As mentioned, the error object is only available within the module as `vars.error`.  You can add a dataweave variable to match the normal [error selector syntax][mule-error] as shown in the above example.
+## Contributors
 
-## Accessing Nested Errors
-Sometimes connectors generate error responses that are generic and wrap the actual error response from the external system.  In this case, the external system's response is lost and not propagated back to the API's caller.  This happens in certain scenarios with the HTTP and Web Service Consumer connectors.
-
-A common scenario is when a system API generates an error that needs to get propagated back to the caller of the experience or process API.  Using normal error handling, like `error.description`, the SOAP fault or 500 response from the called system is not logged or propagated.  These items are usually nested in the error object here: `error.exception.errorMessage.typedValue`. A developer would add that as script to the standard or custom errors in the error handler module to propagate that error as this API's error.
-
-All Mule API's should have the same error response body format.  It is best practice to propagate 500 error details from Mule APIs up the API network, unless you have specific requirement not to do that.  The example DataWeave snippet below shows how to access a called Mule API's error details for propagating, assuming that those details are in `error.details` in the response body, which conforms to the API Error Handler responses.  It falls back to the standard error description and then a default error message in properties if any items are not available.
-
-```
-(error.exception.errorMessage.typedValue.error.details default error.description) default p("property.with.default.error.message")
-```
-
-# Building
-When building this module, the required dependencies are provided by the standard MuleSoft maven repositories. Standard maven build commands work without any additional parameters required.  This is a [Mule XML SDK][xml-sdk] module.  Use `build.sh` as described under **Deploying** below to build the module.
-
-# Deploying
-
-The `build.sh` script executes maven commands on the module, including deploying to Exchange.  For deploying to Anypoint Exchange or other binary repositorities, server credentials must be in your maven settings.xml file, and repository and server properly linked in pom.xml.
-
-It takes the parameters below.
-
-	1. Anypoint Org Id: the Anypoint business organization where to deploy the module.
-	2. Build option: the type of build to execute: `local`, `deploy`.
-		- `local`: builds locally (installs dependencies and module in local maven repository)
-		- `deploy`: deploys module to Exchange
-	
-**Syntax**
-```
-./build.sh {Anypoint Org ID} {build option}
-```
-
-**Example**
-```
-./build.sh 3c07e201-c97b-4665-9310-e3ac89ce1c28 deploy
-```
-
-[handler-plugin]: https://github.com/mulesoft-catalyst/error-handler-plugin
-[mule-error]: https://docs.mulesoft.com/mule-runtime/4.3/mule-error-concept
-[mule-error-types]: https://docs.mulesoft.com/mule-runtime/4.3/mule-error-concept#error_types
-[http-rfc-7231-6]: https://tools.ietf.org/html/rfc7231#section-6
-[http-rfc-7231-6.5]: https://tools.ietf.org/html/rfc7231#section-6.5
-[http-rfc-7231-6.6]: https://tools.ietf.org/html/rfc7231#section-6.6
-[dataweave-file]: https://docs.mulesoft.com/mule-runtime/4.3/dataweave-language-introduction#dwl_file
-[mule-sdk]: https://docs.mulesoft.com/mule-sdk/1.1/xml-sdk
+Imtiyaz Qureshi, Salim Khan, Biswaranjan Mohanty

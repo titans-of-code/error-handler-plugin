@@ -1,18 +1,19 @@
 {
-	"minMuleVersion": "4.2.0",
+	"minMuleVersion": "4.1.5",
 	"extensionModelLoaderDescriptor": {
 		"id": "xml-based",
 		"attributes": {
 			"validate-xml": false,
-			"resource-xml": "module-api-error-handler.xml"
+			"resource-xml": "module-error-handler-plugin.xml"
 		}
 	},
-	"name": "API Error Handler",
+	"name": "Error Handler Plugin",
 	"classLoaderModelLoaderDescriptor": {
 		"id": "mule",
 		"attributes": {
-			"exportedResources": [				
-				"errors/defaultErrors.dwl"
+			"exportedResources": [
+				"dwl/customErrors.dwl",
+				"dwl/defaultErrors.dwl"
 			]
 		}
 	},
